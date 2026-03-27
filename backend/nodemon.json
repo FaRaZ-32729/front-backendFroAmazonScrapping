@@ -1,0 +1,11 @@
+{
+  "ignore": [
+    "cookies.json",
+    "debug_*.png",
+    "*.png"
+  ],
+  "watch": [
+    "src/"
+  ],
+  "ext": "js"
+}
