@@ -1,164 +1,96 @@
 const { getRandomAgent } = require("../utils/browserManager");
 
-// ─────────────────────────────────────────────────────────
-// Verify a business address via Google Search
-//
-// Strategy:
-//   1. Search Google: "BUSINESS NAME" + POSTCODE
-//   2. Look for the Google Knowledge Panel or local result
-//      which shows the address of the business
-//   3. Compare the Google address with the stored Amazon address
-//
-// Returns:
-//   {
-//     googleAddress:      string | null,
-//     googleAddressMatch: "match" | "partial" | "mismatch" | "not_found",
-//     googleMatchReason:  string,
-//     googleMapsUrl:      string | null
-//   }
-// ─────────────────────────────────────────────────────────
-
 module.exports = async function verifyAddressOnGoogle(page, businessName, storedAddress, postcode) {
-
     try {
-
         console.log("Google address check:", businessName, "|", postcode || storedAddress);
 
         await page.setUserAgent(getRandomAgent());
 
-        // ── Step 1: build search query ─────────────────────
-        // Use business name + postcode for a tight result.
-        // Fall back to full address if no postcode.
-
         const searchQuery = postcode
             ? `"${businessName}" ${postcode}`
             : `"${businessName}" ${storedAddress || ""}`;
-
         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&hl=en&gl=gb`;
 
         const loaded = await safeGoto(page, searchUrl);
-
-        if (!loaded) {
-            console.log("Google search page failed to load");
-            return notFound("Google search page failed to load");
-        }
+        if (!loaded) return notFound("Google search page failed to load");
 
         await randomDelay(2000, 3500);
 
-        // ── Step 2: check for CAPTCHA / consent wall ───────
-
+        // Consent / CAPTCHA handling
         const blocked = await page.evaluate(() => {
             const body = document.body.innerText.toLowerCase();
-            return (
-                body.includes("before you continue") ||
-                body.includes("consent.google.com") ||
-                body.includes("verify you're a human") ||
-                document.querySelector('form[action*="consent"]') !== null
-            );
+            return body.includes("before you continue") || body.includes("verify you're a human") ||
+                document.querySelector('form[action*="consent"]') !== null;
         });
 
         if (blocked) {
-            console.log("Google consent / CAPTCHA wall hit");
-            // try to click "Accept all" on consent page
             const accepted = await tryAcceptConsent(page);
             if (!accepted) return notFound("Google consent wall — could not bypass");
-            await randomDelay(2000, 3000);
+            await randomDelay(1500, 3000);
         }
 
-        // ── Step 3: extract address from result page ───────
-
+        // ── Extract address ─────────────────────────────
         const result = await page.evaluate((biz) => {
-
-            // ── A: Knowledge Panel address ─────────────────────
-            // Google shows a knowledge panel on the right for
-            // well-known businesses: address is in span[data-dtype="d3adr"]
-            // or inside .LrzXr elements
-
-            const kpAddress =
-                document.querySelector('span[data-dtype="d3adr"]')?.innerText?.trim() ||
-                document.querySelector('.LrzXr')?.innerText?.trim() ||
-                document.querySelector('[data-attrid="kc:/location/location:address"]')
-                    ?.querySelector('.LrzXr, .a61j6')
-                    ?.innerText?.trim();
-
-            if (kpAddress) {
-                return { address: kpAddress, source: "knowledge_panel", mapsUrl: null };
+            // Knowledge Panel
+            const kpSelectors = [
+                'span[data-dtype="d3adr"]',
+                '.LrzXr',
+                '.Io6YTe span',
+                '[data-attrid="kc:/location/location:address"] .LrzXr'
+            ];
+            for (const sel of kpSelectors) {
+                const el = document.querySelector(sel);
+                if (el?.innerText) return { address: el.innerText.trim(), source: "knowledge_panel", mapsUrl: null };
             }
 
-            // ── B: Local pack result (map pack) ───────────────
-            // Google shows local pack results for business queries.
-            // Each result has address in .rllt__details or .dbg0pd
-
-            const localResults = document.querySelectorAll('.rllt__details, .VkpGBb');
-
+            // Local Pack
+            const localResults = document.querySelectorAll('.rllt__details, .VkpGBb, .dbg0pd');
             for (const result of localResults) {
-
-                const titleEl = result.closest('[data-hveid]')?.querySelector('span.OSrXXb, .dbg0pd span');
+                const titleEl = result.closest('[data-hveid]')?.querySelector('span.OSrXXb, .dbg0pd span, h3 span');
                 const title = titleEl?.innerText?.trim() || "";
-
-                // only pick a result whose title contains part of our business name
                 const bizWords = biz.toLowerCase().split(/\s+/);
                 const titleLow = title.toLowerCase();
                 const matches = bizWords.filter(w => w.length > 3 && titleLow.includes(w));
-
                 if (matches.length === 0 && title !== "") continue;
 
                 const spans = Array.from(result.querySelectorAll('span'));
-
                 for (const span of spans) {
                     const txt = span.innerText?.trim();
-                    // address-like: contains numbers and letters, more than 10 chars
                     if (txt && txt.length > 10 && /\d/.test(txt) && /[A-Z]{1,2}\d/i.test(txt)) {
                         return { address: txt, source: "local_pack", mapsUrl: null };
                     }
                 }
-
             }
 
-            // ── C: Google Maps link with address in href ───────
-            // Sometimes address appears as part of a maps link text
-
+            // Google Maps links
             const mapLinks = Array.from(document.querySelectorAll('a[href*="maps.google"], a[href*="google.com/maps"]'));
-
             for (const link of mapLinks) {
                 const nearby = link.closest('div')?.innerText?.trim();
-                if (nearby && /\d/.test(nearby) && nearby.length > 10 && nearby.length < 200) {
+                if (nearby && /\d/.test(nearby) && nearby.length > 10 && nearby.length < 300) {
                     return { address: nearby.split("\n")[0], source: "maps_link", mapsUrl: link.href };
                 }
             }
 
-            // ── D: Broader fallback — any address-like text ───
-            // Look for UK postcode patterns near the business name
-
+            // Fallback: any UK postcode nearby
             const allText = document.body.innerText;
             const postcodeRegex = /([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})/gi;
-            const postcodeMatches = [...allText.matchAll(postcodeRegex)];
-
-            if (postcodeMatches.length > 0) {
-                // return the first postcode found with surrounding context
-                const match = postcodeMatches[0];
-                const start = Math.max(0, match.index - 80);
-                const ctx = allText.slice(start, match.index + match[0].length + 20)
-                    .replace(/\n+/g, ", ")
-                    .trim();
+            const matches = [...allText.matchAll(postcodeRegex)];
+            if (matches.length) {
+                const match = matches[0];
+                const start = Math.max(0, match.index - 100);
+                const ctx = allText.slice(start, match.index + match[0].length + 50)
+                    .replace(/\n+/g, ", ").trim();
                 return { address: ctx, source: "postcode_fallback", mapsUrl: null };
             }
 
             return null;
-
         }, businessName);
 
-        if (!result || !result.address) {
-            console.log("No address found on Google for:", businessName);
-            return notFound("No address found in Google results");
-        }
-
+        if (!result?.address) return notFound("No address found in Google results");
         console.log(`Google address [${result.source}]:`, result.address);
 
-        // ── Step 4: compare addresses ──────────────────────
-
+        // Compare addresses
         const comparison = compareAddresses(storedAddress, result.address, postcode);
-
         console.log("Google address match:", comparison.status, "—", comparison.reason);
 
         return {
@@ -169,12 +101,9 @@ module.exports = async function verifyAddressOnGoogle(page, businessName, stored
         };
 
     } catch (err) {
-
         console.log("Google address scraper error:", err.message);
         return notFound(`Scraper error: ${err.message}`);
-
     }
-
 };
 
 // ─────────────────────────────────────────────────────────
@@ -307,3 +236,6 @@ function randomDelay(min, max) {
     const ms = Math.floor(Math.random() * (max - min)) + min;
     return new Promise(r => setTimeout(r, ms));
 }
+
+
+
