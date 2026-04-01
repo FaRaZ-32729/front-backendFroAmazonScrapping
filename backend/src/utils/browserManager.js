@@ -18,8 +18,8 @@ function getRandomAgent() {
 async function launchBrowser() {
 
     const browser = await puppeteer.launch({
-        headless: "new",
-        // headless: false,
+        // headless: "new",
+        headless: false,
         executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
         args: [
             "--no-sandbox",

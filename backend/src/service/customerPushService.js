@@ -16,15 +16,15 @@
 const CustomerPush = require("../models/customerPushModel");
 
 // ─── Config (from .env) ───────────────────────────────────
-const CRM_API_BASE      = process.env.CRM_API_BASE      || "https://salesrephub.iotfiysolutions.com/api";
-const CRM_LOGIN_EMAIL   = process.env.CRM_LOGIN_EMAIL   || "";
+const CRM_API_BASE = process.env.CRM_API_BASE || "https://salesrephub.iotfiysolutions.com/api";
+const CRM_LOGIN_EMAIL = process.env.CRM_LOGIN_EMAIL || "";
 const CRM_LOGIN_PASSWORD = process.env.CRM_LOGIN_PASSWORD || "";
 
 // ─── Auth token cache ─────────────────────────────────────
 // Token is reused within a run. Re-login only if it expires (401).
-let _cachedToken   = null;
+let _cachedToken = null;
 let _tokenFetchedAt = 0;
-const TOKEN_TTL_MS  = 55 * 60 * 1000; // treat token as stale after 55 min
+const TOKEN_TTL_MS = 55 * 60 * 1000; // treat token as stale after 55 min
 
 // ─────────────────────────────────────────────────────────
 // Public: pushVerifiedLeads
@@ -131,7 +131,7 @@ async function getToken() {
     for (const endpoint of loginEndpoints) {
         try {
             const res = await fetchJSON(endpoint, "POST", null, {
-                email:    CRM_LOGIN_EMAIL,
+                email: CRM_LOGIN_EMAIL,
                 password: CRM_LOGIN_PASSWORD,
             });
 
@@ -144,7 +144,7 @@ async function getToken() {
                     res.data?.data?.accessToken;
 
                 if (token) {
-                    _cachedToken    = token;
+                    _cachedToken = token;
                     _tokenFetchedAt = Date.now();
                     console.log(`[CRM] ✓ Logged in via ${endpoint}`);
                     return token;
@@ -203,30 +203,70 @@ async function postCustomer(token, payload) {
 // ─────────────────────────────────────────────────────────
 // Build customer payload from lead data
 // ─────────────────────────────────────────────────────────
+// function buildCustomerPayload(lead) {
+//     const city = extractCity(lead.address);
+
+//     return {
+//         firstName:              lead.ownerName           || "",
+//         contactPerson:          lead.ownerName           || "",
+//         company:                lead.businessName        || lead.sellerName || "",
+//         email:                  lead.email               || "",
+//         phone:                  lead.phoneNumber         || "",
+//         address:                lead.address             || "",
+//         city:                   city                     || "",
+//         state:                  "United Kingdom",
+//         postcode:               lead.postcode            || "",
+//         latitude:               "",
+//         longitude:              "",
+//         orderPotential:         "Medium",
+//         monthlySpend:           0,
+//         status:                 "Not Visited",
+//         notes:                  `Auto-imported from Amazon scraper. Seller ID: ${lead.sellerId || "—"}`,
+//         competitorInfo:         "",
+//         associatedContactName:  "",
+//         associatedCompanyName:  "",
+//         lastContact:            "",
+//         lastEngagement:         "",
+//     };
+// }
+
 function buildCustomerPayload(lead) {
     const city = extractCity(lead.address);
 
+    // ─── Rating Categorization ───────────────────────────
+    let categoryEmail = "c@tegory.c";
+
+    const total = parseInt(lead.totalRatings || 0);
+
+    if (total >= 50) {
+        categoryEmail = "c@tegory.a";
+    } else if (total >= 25 && total <= 49) {
+        categoryEmail = "c@tegory.b";
+    } else {
+        categoryEmail = "c@tegory.c";
+    }
+
     return {
-        firstName:              lead.ownerName           || "",
-        contactPerson:          lead.ownerName           || "",
-        company:                lead.businessName        || lead.sellerName || "",
-        email:                  lead.email               || "",
-        phone:                  lead.phoneNumber         || "",
-        address:                lead.address             || "",
-        city:                   city                     || "",
-        state:                  "United Kingdom",
-        postcode:               lead.postcode            || "",
-        latitude:               "",
-        longitude:              "",
-        orderPotential:         "Medium",
-        monthlySpend:           0,
-        status:                 "Not Visited",
-        notes:                  `Auto-imported from Amazon scraper. Seller ID: ${lead.sellerId || "—"}`,
-        competitorInfo:         "",
-        associatedContactName:  "",
-        associatedCompanyName:  "",
-        lastContact:            "",
-        lastEngagement:         "",
+        firstName: lead.ownerName || "",
+        contactPerson: lead.ownerName || "",
+        company: lead.businessName || lead.sellerName || "",
+        email: categoryEmail,
+        phone: lead.phoneNumber || "",
+        address: lead.address || "",
+        city: city || "",
+        state: "United Kingdom",
+        postcode: lead.postcode || "",
+        latitude: "",
+        longitude: "",
+        orderPotential: "Medium",
+        monthlySpend: 0,
+        status: "Not Visited",
+        notes: `Auto-imported from Amazon scraper. Seller ID: ${lead.sellerId || "—"}`,
+        competitorInfo: "",
+        associatedContactName: "",
+        associatedCompanyName: "",
+        lastContact: "",
+        lastEngagement: "",
     };
 }
 
@@ -270,17 +310,17 @@ function extractCity(address) {
 async function savePushRecord(lead, status, crmCustomerId, errorMessage) {
     try {
         await CustomerPush.create({
-            amazonLeadId:  lead._id   || null,
-            sellerId:      lead.sellerId || null,
-            businessName:  lead.businessName || lead.sellerName || null,
-            ownerName:     lead.ownerName    || null,
-            email:         lead.email        || null,
-            phone:         lead.phoneNumber  || null,
-            postcode:      lead.postcode     || null,
+            amazonLeadId: lead._id || null,
+            sellerId: lead.sellerId || null,
+            businessName: lead.businessName || lead.sellerName || null,
+            ownerName: lead.ownerName || null,
+            email: lead.email || null,
+            phone: lead.phoneNumber || null,
+            postcode: lead.postcode || null,
             status,
             crmCustomerId: crmCustomerId || null,
-            errorMessage:  errorMessage  || null,
-            pushedAt:      new Date(),
+            errorMessage: errorMessage || null,
+            pushedAt: new Date(),
         });
     } catch (err) {
         // Silently swallow unique constraint violations on businessName
@@ -298,19 +338,19 @@ async function fetchJSON(url, method, token, body) {
     const https = url.startsWith("https") ? require("https") : require("http");
 
     return new Promise((resolve, reject) => {
-        const bodyStr  = body ? JSON.stringify(body) : "";
-        const parsed   = new URL(url);
+        const bodyStr = body ? JSON.stringify(body) : "";
+        const parsed = new URL(url);
 
         const headers = {
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
             "Content-Length": Buffer.byteLength(bodyStr),
         };
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
         const options = {
             hostname: parsed.hostname,
-            port:     parsed.port || (url.startsWith("https") ? 443 : 80),
-            path:     parsed.pathname + parsed.search,
+            port: parsed.port || (url.startsWith("https") ? 443 : 80),
+            path: parsed.pathname + parsed.search,
             method,
             headers,
         };
