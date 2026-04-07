@@ -1,14 +1,5 @@
 const mongoose = require("mongoose");
 
-/**
- * CustomerPush — tracks every Amazon lead that was auto-pushed
- * to the salesrephub CRM as a customer.
- *
- * Used to:
- *  1. Prevent duplicate pushes (dedup on businessName)
- *  2. Audit what was sent and when
- *  3. Surface push errors for manual review
- */
 const customerPushSchema = new mongoose.Schema(
     {
         // ── Link back to the source lead ──────────────────────

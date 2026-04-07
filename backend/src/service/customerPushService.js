@@ -1,17 +1,3 @@
-/**
- * customerPushService.js
- *
- * Logs into the salesrephub CRM (salesrephub.iotfiysolutions.com)
- * and creates a customer record for each verified Amazon lead.
- *
- * Required .env variables:
- *
- *   CRM_API_BASE=https://salesrephub.iotfiysolutions.com/api
- *   CRM_LOGIN_EMAIL=talhaabid400@gmail.com
- *   CRM_LOGIN_PASSWORD=Admin@123
- *
- * (store in .env — never hard-code credentials)
- */
 
 const CustomerPush = require("../models/customerPushModel");
 
@@ -26,11 +12,6 @@ let _cachedToken = null;
 let _tokenFetchedAt = 0;
 const TOKEN_TTL_MS = 55 * 60 * 1000; // treat token as stale after 55 min
 
-// ─────────────────────────────────────────────────────────
-// Public: pushVerifiedLeads
-//
-// Takes an array of fully-verified AmazonLead objects and
-// pushes each to the CRM.  Returns a summary object.
 // ─────────────────────────────────────────────────────────
 async function pushVerifiedLeads(verifiedLeads) {
     const summary = { pushed: 0, duplicates: 0, failed: 0, skipped: 0 };

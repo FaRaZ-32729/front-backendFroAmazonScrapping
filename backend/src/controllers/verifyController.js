@@ -3,13 +3,6 @@ const scrapeCompanyOfficer = require("../scrapper/companiesHouseScraper");
 const verifyAddressOnGoogle = require("../scrapper/googleAddressScraper");
 const AmazonLead = require("../models/amazonLeadModel");
 
-// ─────────────────────────────────────────────────────────
-// Controller: verifyLead
-// POST /api/verify/:id
-//
-// Looks up a single lead by ID, searches Companies House
-// for the business owner, and saves the result back to DB.
-// ─────────────────────────────────────────────────────────
 
 async function verifyLead(req, res) {
 
@@ -97,13 +90,6 @@ async function verifyLead(req, res) {
 
 }
 
-// ─────────────────────────────────────────────────────────
-// Controller: verifyAllLeads
-// POST /api/verify/batch
-//
-// SSE stream — verifies all unverified leads one by one
-// and pushes progress events to the frontend.
-// ─────────────────────────────────────────────────────────
 
 async function verifyAllLeads(req, res) {
 
